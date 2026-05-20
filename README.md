@@ -1,1 +1,1 @@
-# web-aplikasi-kasir
+# project System POS web-aplikasi-kasir
