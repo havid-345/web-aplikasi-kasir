@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Kasir Sembako</title>
+    <!-- Menggunakan Bootstrap untuk tampilan yang rapi -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Library untuk mengubah HTML ke PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; }
+        .struk-print-area {
+            background: white;
+            padding: 20px;
+            width: 300px;
+            margin: 0 auto;
+            border: 1px dashed #ccc;
+            display: none; /* Disembunyikan, hanya muncul saat proses cetak */
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+        .struk-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+        .struk-footer { text-align: center; border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; }
+        .qris-container { text-align: center; margin-top: 20px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container mt-4">
+    <h2 class="text-center mb-4">🛒 Kasir Toko Sembako Maju Jaya</h2>
+    
+    <div class="row">
+        <!-- Daftar Produk -->
+        <div class="col-md-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">Daftar Produk</div>
+                <div class="card-body row" id="product-list">
+                    <!-- Produk akan dirender lewat JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Keranjang & Pembayaran -->
+        <div class="col-md-5">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-success text-white">Keranjang Belanja</div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Barang</th>
+                                <th>Qty</th>
+                                <th>Subtotal</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cart-items">
+                            <!-- Item keranjang akan dirender di sini -->
+                        </tbody>
+                    </table>
+                    <hr>
+                    <h4 class="text-end">Total: <span id="total-price">Rp 0</span></h4>
+                    
+                    <button class="btn btn-warning w-100 mt-2" onclick="bayarQRIS()">Bayar dengan QRIS</button>
+                    
+                    <!-- Area QRIS -->
+                    <div id="qris-area" class="qris-container">
+                        <h5>Scan QRIS untuk Bayar</h5>
+                        <!-- Menggunakan API gratis untuk membuat QR Code dummy -->
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Pembayaran+QRIS+Toko+Sembako+Maju+Jaya" alt="QRIS" class="img-thumbnail">
+                        <p class="mt-2 text-success fw-bold">Menunggu Pembayaran...</p>
+                        
+                        <div class="mt-3">
+                            <button class="btn btn-danger btn-sm" onclick="cetakPDF()">Cetak Struk (PDF)</button>
+                            <button class="btn btn-info btn-sm text-white" onclick="cetakWord()">Cetak Struk (Word)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Template Struk (Format untuk PDF/Word) -->
+<div id="struk-template" class="struk-print-area text-black">
+    <div class="struk-header">
+        <strong>TOKO SEMBAKO MAJU JAYA</strong><br>
+        Jl. Merdeka No. 123, Jakarta<br>
+        Tanggal: <span id="struk-tanggal"></span>
+    </div>
+    <div id="struk-items" style="margin-bottom: 10px;"></div>
+    <div style="border-top: 1px dashed #000; padding-top: 5px; text-align: right;">
+        <strong>Total: <span id="struk-total">Rp 0</span></strong><br>
+        Metode: <strong>QRIS</strong>
+    </div>
+    <div class="struk-footer">
+        Terima Kasih Telah Berbelanja!<br>
+        Barang yang sudah dibeli tidak dapat ditukar.
+    </div>
+</div>
+
+<script>
+    // Data Produk Dummy
+    const products = [
+        { id: 1, name: 'Beras Premium 5Kg', price: 65000 },
+        { id: 2, name: 'Minyak Goreng 2L', price: 34000 },
+        { id: 3, name: 'Gula Pasir 1Kg', price: 16000 },
+        { id: 4, name: 'Telur Ayam 1Kg', price: 28000 },
+        { id: 5, name: 'Tepung Terigu 1Kg', price: 12000 },
+        { id: 6, name: 'Kopi Bubuk 200g', price: 15000 }
+    ];
+
+    let cart = [];
+
+    // Format Rupiah
+    const formatRupiah = (number) => {
+        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
+    };
+
+    // Render Produk ke layar
+    function renderProducts() {
+        const productList = document.getElementById('product-list');
+        products.forEach(p => {
+            productList.innerHTML += `
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">${p.name}</h6>
+                            <p class="card-text text-primary fw-bold">${formatRupiah(p.price)}</p>
+                            <button class="btn btn-outline-primary btn-sm" onclick="addToCart(${p.id})">Tambah</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    // Tambah ke Keranjang
+    function addToCart(id) {
+        const product = products.find(p => p.id === id);
+        const existing = cart.find(c => c.id === id);
+        
+        if (existing) { existing.qty += 1; } 
+        else { cart.push({ ...product, qty: 1 }); }
+        
+        updateCart();
+    }
+
+    // Hapus dari Keranjang
+    function removeFromCart(id) {
+        cart = cart.filter(c => c.id !== id);
+        updateCart();
+    }
+
+    // Update Tampilan Keranjang
+    function updateCart() {
+        const cartBody = document.getElementById('cart-items');
+        let total = 0;
+        cartBody.innerHTML = '';
+
+        cart.forEach(item => {
+            const subtotal = item.price * item.qty;
+            total += subtotal;
+            cartBody.innerHTML += `
+                <tr>
+                    <td>${item.name}</td>
+                    <td>${item.qty}</td>
+                    <td>${formatRupiah(subtotal)}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="removeFromCart(${item.id})">X</button></td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('total-price').innerText = formatRupiah(total);
+        document.getElementById('qris-area').style.display = 'none'; // Sembunyikan QRIS jika keranjang diupdate
+    }
+
+    // Tampilkan QRIS
+    function bayarQRIS() {
+        if (cart.length === 0) {
+            alert('Keranjang masih kosong!');
+            return;
+        }
+        document.getElementById('qris-area').style.display = 'block';
+        siapkanStruk();
+    }
+
+    // Siapkan data struk di elemen tersembunyi
+    function siapkanStruk() {
+        const date = new Date().toLocaleString('id-ID');
+        document.getElementById('struk-tanggal').innerText = date;
+        
+        const strukItems = document.getElementById('struk-items');
+        strukItems.innerHTML = '';
+        let total = 0;
+
+        cart.forEach(item => {
+            const subtotal = item.price * item.qty;
+            total += subtotal;
+            strukItems.innerHTML += `
+                <div style="display: flex; justify-content: space-between;">
+                    <span>${item.name} (x${item.qty})</span>
+                    <span>${formatRupiah(subtotal)}</span>
+                </div>
+            `;
+        });
+        document.getElementById('struk-total').innerText = formatRupiah(total);
+    }
+
+    // Fungsi Cetak ke PDF
+    function cetakPDF() {
+        const element = document.getElementById('struk-template');
+        element.style.display = 'block'; // Tampilkan sementara untuk dirender
+        
+        const opt = {
+            margin:       10,
+            filename:     'Struk_Sembako.pdf',
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2 },
+            jsPDF:        { unit: 'mm', format: [80, 150], orientation: 'portrait' } // Ukuran kertas thermal kasir
+        };
+
+        html2pdf().set(opt).from(element).save().then(() => {
+            element.style.display = 'none'; // Sembunyikan lagi
+            selesaiTransaksi();
+        });
+    }
+
+    // Fungsi Cetak ke Word (.doc)
+    function cetakWord() {
+        const element = document.getElementById('struk-template').innerHTML;
+        
+        // Membungkus HTML struk agar dikenali sebagai dokumen Word
+        const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Struk Pembayaran</title><style>body{font-family:Courier New; font-size:14px;}</style></head><body>`;
+        const footer = "</body></html>";
+        const sourceHTML = header + element + footer;
+        
+        const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
+        const fileDownload = document.createElement("a");
+        document.body.appendChild(fileDownload);
+        fileDownload.href = source;
+        fileDownload.download = 'Struk_Sembako.doc';
+        fileDownload.click();
+        document.body.removeChild(fileDownload);
+        
+        selesaiTransaksi();
+    }
+
+    // Reset keranjang setelah cetak
+    function selesaiTransaksi() {
+        cart = [];
+        updateCart();
+        alert('Terima kasih! Struk berhasil diunduh dan transaksi selesai.');
+    }
+
+    // Inisialisasi awal
+    renderProducts();
+</script>
+</body>
+</html>
